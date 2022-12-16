@@ -1,5 +1,6 @@
 import os
 from copy import deepcopy
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -82,25 +83,46 @@ class HandwritingGenerator:
 
                 cropped = self.img[self.y - int(self.config["font_size"] / 2):self.y]
                 coords = np.argwhere(cropped == 0)
-                self.x = coords.max(axis=1).max() + self.config["word_space"] * self.config["font_size"]
+                if coords.size != 0:
+                    self.x = coords.max(axis=0)[1] + self.config["word_space"] * self.config["font_size"]
 
             self.y += self.config["font_size"] + self.config["line_gap"]
             self.x = self.config["margin_left"]
 
+    def write_word(self, text: str) -> Optional[np.ndarray]:
+        img_size = (self.config["font_size"] * 10, self.config["font_size"] * len(text) * 10, 3)
+        img = np.zeros(img_size, dtype=np.uint8)
+        img[:] = 255
+        x = self.config["font_size"] * 10
+        y = self.config["font_size"] * 5
+        self.font.putText(img=img, text=text, org=(x, y), fontHeight=self.config["font_size"],
+                          color=(0, 0, 0), thickness=-1, line_type=cv2.LINE_AA, bottomLeftOrigin=True)
+        coords = np.argwhere(img == 0)
+        if coords.size == 0:
+            return None
+
+        y_min, x_min, _ = coords.min(axis=0)
+        y_max, x_max, _ = coords.max(axis=0)
+        img = img[y_min - int((y_max - y_min) / 5):y_max + int((y_max - y_min) / 5),
+                  x_min - int(self.config["font_size"] / 10):x_max + int(self.config["font_size"] / 5)]
+        return img
+
 
 if __name__ == "__main__":
     config = deepcopy(default_config)
-    test_text = "АБВГДЕЖЗИЙКЛМН ОПРСТУФХЦЧШЩЬЫЪЭЮЯ абвгдежзийклмн опрстуфхцчшщьыъэюя. ! \"  %  (  ) , - ?  :  ;"
+    test_text = "АБВГДЕЖЗИЙКЛМН ОПРСТУФХЦЧШЩЬЫЪЭЮЯ абвгдежзийклмн опрстуфхцчшщьыъэюя 0123456789 .!\"%(),-?:;"
     font_dir = "fonts"
     text_generator = HandwritingGenerator(config=config)
 
-    for font_name in sorted(os.listdir("fonts")):
+    for font_name in sorted(os.listdir(font_dir)):
         if not font_name.lower().endswith((".ttf", ".otf")):
             continue
-
-        config["font_name"] = os.path.join(font_dir, font_name)
+        config["font_name"] = os.path.join("fonts", font_name)
         text_generator.change_config(new_config=config)
-        text_generator.write_text(f"{font_name[:-4]}: {test_text}")
-
-    for j, img in enumerate(text_generator.pages + [text_generator.img]):
-        cv2.imwrite(os.path.join(f"images", f'{j}.png'), img)
+        try:
+            text_generator.write_text(test_text)
+        except Exception as e:
+            print(e)
+        for j, img in enumerate(text_generator.pages + [text_generator.img]):
+            cv2.imwrite(os.path.join(f"images", f'{font_name}_{j}.png'), img)
+        text_generator.delete_state()
