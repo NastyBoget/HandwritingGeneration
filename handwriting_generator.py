@@ -1,10 +1,10 @@
 import os
 from copy import deepcopy
-from typing import Optional
+from typing import Tuple
 
-import cv2
 import numpy as np
-
+from PIL import Image, ImageFont, ImageDraw
+from tqdm import tqdm
 
 default_config = dict(
     font_name='fonts/Example.ttf',
@@ -37,27 +37,27 @@ class HandwritingGenerator:
                 self.config[key] = default_config[key]
 
         assert "font_name" in self.config
-        self.font = cv2.freetype.createFreeType2()
-        self.font.loadFontData(fontFileName=self.config["font_name"], id=0)
-        self.x, self.y = self.config["margin_left"], self.config["margin_top"] + self.config["font_size"]
-        self.img = self.create_page()
+        self.font = ImageFont.truetype(self.config["font_name"], self.config["font_size"])
+        self.x, self.y = self.config["margin_left"], self.config["margin_top"]
+        self.img, self.draw = self.create_page()
         self.pages = []
 
     def change_config(self, new_config: dict) -> None:
         for key in new_config:
             self.config[key] = new_config[key]
-        self.font = cv2.freetype.createFreeType2()
-        self.font.loadFontData(fontFileName=self.config["font_name"], id=0)
+        self.font = ImageFont.truetype(self.config["font_name"], self.config["font_size"])
 
-    def create_page(self) -> np.ndarray:
+    def create_page(self) -> Tuple[Image.Image, ImageDraw.ImageDraw]:
         page_size = self.config["page_size"]
-        img = np.zeros((page_size[1], page_size[0], 3), dtype=np.uint8)
-        img[:] = 255
-        return img
+        img_arr = np.zeros((page_size[1], page_size[0], 3), dtype=np.uint8)
+        img_arr[:, :] = self.config["page_color"]
+        img = Image.fromarray(img_arr)
+        draw = ImageDraw.Draw(img)
+        return img, draw
 
     def delete_state(self) -> None:
-        self.x, self.y = self.config["margin_left"], self.config["margin_top"] + self.config["font_size"]
-        self.img = self.create_page()
+        self.x, self.y = self.config["margin_left"], self.config["margin_top"]
+        self.img, self.draw = self.create_page()
         self.pages = []
 
     def write_text(self, text: str) -> None:
@@ -66,46 +66,34 @@ class HandwritingGenerator:
             words = line.split()
 
             for word in words:
-                if self.x + self.config["font_size"] * len(word) + self.config["margin_right"] >= self.config["page_size"][0]:
+                x_min, y_min, x_max, y_max = self.draw.textbbox((self.x, self.y), word, self.font)
+                if x_max + self.config["margin_right"] >= self.config["page_size"][0]:
                     self.x = self.config["margin_left"]
                     self.y += self.config["font_size"] + self.config["line_gap"]
 
-                if self.y + self.config["margin_bottom"] >= self.config["page_size"][1]:
+                if y_max + self.config["margin_bottom"] >= self.config["page_size"][1]:
                     self.pages.append(self.img)
-                    self.img = self.create_page()
-                    self.x, self.y = self.config["margin_left"], self.config["margin_top"] + self.config["font_size"]
+                    self.img, self.draw = self.create_page()
+                    self.x, self.y = self.config["margin_left"], self.config["margin_top"]
 
-                try:
-                    self.font.putText(img=self.img, text=word, org=(self.x, self.y), fontHeight=self.config["font_size"],
-                                      color=(0, 0, 0), thickness=-1, line_type=cv2.LINE_AA, bottomLeftOrigin=True)
-                except cv2.error as e:
-                    print(e)
-
-                cropped = self.img[self.y - int(self.config["font_size"] / 2):self.y]
-                coords = np.argwhere(cropped == 0)
-                if coords.size != 0:
-                    self.x = coords.max(axis=0)[1] + self.config["word_space"] * self.config["font_size"]
+                self.draw.text((self.x, self.y), word, self.config["text_color"], font=self.font)
+                self.x = x_max + self.config["word_space"] * self.config["font_size"]
 
             self.y += self.config["font_size"] + self.config["line_gap"]
             self.x = self.config["margin_left"]
 
-    def write_word(self, text: str) -> Optional[np.ndarray]:
+    def write_word(self, text: str, margin: tuple = (10, 10)) -> np.ndarray:
         img_size = (self.config["font_size"] * 10, self.config["font_size"] * len(text) * 10, 3)
         img = np.zeros(img_size, dtype=np.uint8)
-        img[:] = 255
-        x = self.config["font_size"] * 10
-        y = self.config["font_size"] * 5
-        self.font.putText(img=img, text=text, org=(x, y), fontHeight=self.config["font_size"],
-                          color=(0, 0, 0), thickness=-1, line_type=cv2.LINE_AA, bottomLeftOrigin=True)
-        coords = np.argwhere(img == 0)
-        if coords.size == 0:
-            return None
+        img[:, :] = self.config["page_color"]
+        img = Image.fromarray(img)
+        draw = ImageDraw.Draw(img)
 
-        y_min, x_min, _ = coords.min(axis=0)
-        y_max, x_max, _ = coords.max(axis=0)
-        img = img[y_min - int((y_max - y_min) / 5):y_max + int((y_max - y_min) / 5),
-                  x_min - int(self.config["font_size"] / 10):x_max + int(self.config["font_size"] / 5)]
-        return img
+        x, y = self.config["font_size"], self.config["font_size"]
+        x_min, y_min, x_max, y_max = draw.textbbox((x, y), text, self.font)
+
+        draw.text((x, y), text, self.config["text_color"], font=self.font)
+        return np.array(img.crop((x_min - margin[0], y_min - margin[1], x_max + margin[0], y_max + margin[1])))
 
 
 if __name__ == "__main__":
@@ -114,7 +102,7 @@ if __name__ == "__main__":
     font_dir = "fonts"
     text_generator = HandwritingGenerator(config=config)
 
-    for font_name in sorted(os.listdir(font_dir)):
+    for font_name in tqdm(sorted(os.listdir(font_dir))):
         if not font_name.lower().endswith((".ttf", ".otf")):
             continue
         config["font_name"] = os.path.join("fonts", font_name)
@@ -124,5 +112,5 @@ if __name__ == "__main__":
         except Exception as e:
             print(e)
         for j, img in enumerate(text_generator.pages + [text_generator.img]):
-            cv2.imwrite(os.path.join(f"images", f'{font_name}_{j}.png'), img)
+            img.save(os.path.join(f"images", f'{font_name}_{j}.png'))
         text_generator.delete_state()

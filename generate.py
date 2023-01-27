@@ -42,7 +42,7 @@ if __name__ == "__main__":
         if not font_name.lower().endswith((".ttf", ".otf")):
             continue
 
-        config["font_name"] = os.path.join("fonts", font_name)
+        config["font_name"] = os.path.join(fonts_dir, font_name)
         text_generator.change_config(new_config=config)
 
         words = set()
