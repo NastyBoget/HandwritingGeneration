@@ -1,7 +1,9 @@
 import os
+import random
 from copy import deepcopy
 from typing import Tuple
 
+import cv2
 import numpy as np
 from PIL import Image, ImageFont, ImageDraw
 from tqdm import tqdm
@@ -82,7 +84,7 @@ class HandwritingGenerator:
             self.y += self.config["font_size"] + self.config["line_gap"]
             self.x = self.config["margin_left"]
 
-    def write_word(self, text: str, margin: tuple = (10, 10)) -> np.ndarray:
+    def write_word(self, text: str, margin: tuple = (10, 10), randomize_skew: bool = True) -> np.ndarray:
         img_size = (self.config["font_size"] * 10, self.config["font_size"] * len(text) * 10, 3)
         img = np.zeros(img_size, dtype=np.uint8)
         img[:, :] = self.config["page_color"]
@@ -93,7 +95,29 @@ class HandwritingGenerator:
         x_min, y_min, x_max, y_max = draw.textbbox((x, y), text, self.font)
 
         draw.text((x, y), text, self.config["text_color"], font=self.font)
-        return np.array(img.crop((x_min - margin[0], y_min - margin[1], x_max + margin[0], y_max + margin[1])))
+        img = np.array(img.crop((x_min - margin[0], y_min - margin[1], x_max + margin[0], y_max + margin[1])))  # noqa
+
+        if randomize_skew:
+            img = self.skew(img, random.uniform(-1.5, 1.5))
+        return img
+
+    def skew(self, img: np.ndarray, angle: float) -> np.ndarray:
+        """
+        img should have 3 dimensions, background value 255 and black value 0
+        :param angle: angle to rotate in radians [-1.5; 1.5]
+        :param img: image to change
+        :return: changed image
+        """
+        img = 255 - img
+        if angle > 0:
+            img2 = np.concatenate([img, np.zeros([img.shape[0], int(img.shape[0] * angle), 3])], axis=1)
+        else:
+            img2 = np.concatenate([np.zeros([img.shape[0], int(img.shape[0] * (-angle)), 3]), img], axis=1)
+
+        M = np.float32([[1, -angle, 0], [0, 1, 0]])
+        out_img = cv2.warpAffine(img2, M, (img2.shape[1], img2.shape[0]), flags=cv2.WARP_INVERSE_MAP | cv2.INTER_LINEAR)
+        out_img = 255 - out_img
+        return out_img
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 import os
+import random
 from copy import deepcopy
 
 import cv2
@@ -25,6 +26,8 @@ font2not_allowed_symbols = {
     "Voronov.ttf": "ЬЫЪ"
 }
 
+MAX_LEN = 3
+
 
 if __name__ == "__main__":
     fonts_dir = "fonts"
@@ -33,10 +36,7 @@ if __name__ == "__main__":
     os.makedirs(os.path.join(out_dir, img_dir), exist_ok=True)
     config = deepcopy(default_config)
     text_generator = HandwritingGenerator(config=config)
-    data_dict = {
-        "path": [],
-        "word": []
-    }
+    data_dict = {"path": [], "word": []}
 
     for font_name in tqdm(sorted(os.listdir(fonts_dir))):
         if not font_name.lower().endswith((".ttf", ".otf")):
@@ -46,30 +46,39 @@ if __name__ == "__main__":
         text_generator.change_config(new_config=config)
 
         words = set()
-        while len(words) < 1500:
+        while len(words) < 5000:
             words = words | set(get_random_text().split(" "))
         words = list(words)[:1500]
+        sentences = []
 
-        for i, word in enumerate(words):
+        # group words into sentences
+        while len(words) > MAX_LEN:
+            sentence_len = random.randint(1, MAX_LEN)
+            sentences.append(" ".join(words[:sentence_len]))
+            words = words[sentence_len:]
+
+        for i, sentence in enumerate(sentences):
 
             if font_name in font2not_allowed_symbols:
                 for sym in font2not_allowed_symbols[font_name]:
-                    word = word.replace(sym, "")
+                    sentence = sentence.replace(sym, "")
 
-            # TODO randomize drawing symbols
-            word_img = text_generator.write_word(word) if word else None
-            if word_img is not None:
+            if not sentence:
+                continue
+
+            text_generator.config["font_size"] = random.randint(20, 100)
+            sentence_img = text_generator.write_word(sentence)
+            if sentence_img is not None:
                 img_name = f'{font_name}_{i:04d}.png'
                 try:
-                    cv2.imwrite(os.path.join(out_dir, img_dir, img_name), word_img)
+                    cv2.imwrite(os.path.join(out_dir, img_dir, img_name), sentence_img)
                 except Exception as e:
                     continue
                 data_dict["path"].append(f"{img_dir}/{img_name}")
-                data_dict["word"].append(word)
+                data_dict["word"].append(sentence)
 
         df = pd.DataFrame(data_dict)
         df.to_csv(os.path.join(out_dir, "gt.txt"), sep="\t", index=False, header=False)
 
     df = pd.DataFrame(data_dict)
     df.to_csv(os.path.join(out_dir, "gt.txt"), sep="\t", index=False, header=False)
-    # first version of the dataset
