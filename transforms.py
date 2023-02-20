@@ -2,65 +2,10 @@ import math
 import cv2
 import random
 import numpy as np
+import skimage
 from albumentations import augmentations
-
-
-class RescalePaddingImage:
-    def __init__(self, output_height, output_width):
-        self.output_height = output_height
-        self.output_width = output_width
-
-    def __call__(self, image):
-        h, w = image.shape[:2]
-        # width proportional to change in  height
-        new_width = int(w*(self.output_height/h))
-        # new_width cannot be bigger than output_width
-        new_width = min(new_width, self.output_width)
-        image = cv2.resize(image, (new_width, self.output_height),
-                           interpolation=cv2.INTER_LINEAR)
-        if new_width < self.output_width:
-            image = np.pad(
-                image, ((0, 0), (0, self.output_width - new_width), (0, 0)),
-                'constant', constant_values=0)
-        return image
-
-
-class Normalize:
-    def __call__(self, img):
-        img = img.astype(np.float32) / 255
-        return img
-
-
-class Rotate:
-    def __init__(self, max_ang, prob):
-        self.aug = augmentations.geometric.rotate.Rotate(limit=max_ang, p=prob)
-
-    def __call__(self, img):
-        augmented = self.aug(image=img)
-        return augmented['image']
-
-
-class SafeRotate:
-    def __init__(self, max_ang, prob):
-        self.aug = augmentations.geometric.rotate.SafeRotate(
-            limit=max_ang, p=prob)
-
-    def __call__(self, img):
-        augmented = self.aug(image=img)
-        return augmented['image']
-
-
-class MoveChannels:
-    """Move the channel axis to the zero position as required in pytorch."""
-
-    def __init__(self, to_channels_first=True):
-        self.to_channels_first = to_channels_first
-
-    def __call__(self, image):
-        if self.to_channels_first:
-            return np.moveaxis(image, -1, 0)
-        else:
-            return np.moveaxis(image, 0, -1)
+from augmixations import HandWrittenBlot
+from numpy.random import default_rng
 
 
 class UseWithProb:
@@ -82,22 +27,23 @@ class OneOf:
         return random.choice(self.transforms)(image)
 
 
-def img_crop(img, bbox):
-    return img[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+class Rotate:
+    def __init__(self, max_ang, prob):
+        self.aug = augmentations.geometric.rotate.Rotate(limit=max_ang, p=prob)
+
+    def __call__(self, img):
+        augmented = self.aug(image=img)
+        return augmented['image']
 
 
-def random_crop(img, size):
-    tw = size[0]
-    th = size[1]
-    h, w = img.shape[:2]
-    if ((w - tw) > 0) and ((h - th) > 0):
-        x1 = random.randint(0, w - tw)
-        y1 = random.randint(0, h - th)
-    else:
-        x1 = 0
-        y1 = 0
-    img_return = img_crop(img, (x1, y1, x1 + tw, y1 + th))
-    return img_return, x1, y1
+class SafeRotate:
+    def __init__(self, max_ang, prob):
+        self.aug = augmentations.geometric.rotate.SafeRotate(
+            limit=max_ang, p=prob)
+
+    def __call__(self, img):
+        augmented = self.aug(image=img)
+        return augmented['image']
 
 
 class RandomCrop:
@@ -111,67 +57,24 @@ class RandomCrop:
             int(img.shape[1]*factor),
             int(img.shape[0]*factor)
         )
-        img, x1, y1 = random_crop(img, size)
+        img, x1, y1 = self.__random_crop(img, size)
         return img
 
+    def __img_crop(self, img, bbox):
+        return img[bbox[1]:bbox[3], bbox[0]:bbox[2]]
 
-def largest_rotated_rect(w, h, angle):
-    """
-    https://stackoverflow.com/a/16770343
-    Given a rectangle of size wxh that has been rotated by 'angle' (in
-    radians), computes the width and height of the largest possible
-    axis-aligned rectangle within the rotated rectangle.
-    Original JS code by 'Andri' and Magnus Hoff from Stack Overflow
-    Converted to Python by Aaron Snoswell
-    """
-
-    quadrant = int(math.floor(angle / (math.pi / 2))) & 3
-    sign_alpha = angle if ((quadrant & 1) == 0) else math.pi - angle
-    alpha = (sign_alpha % math.pi + math.pi) % math.pi
-
-    bb_w = w * math.cos(alpha) + h * math.sin(alpha)
-    bb_h = w * math.sin(alpha) + h * math.cos(alpha)
-
-    gamma = math.atan2(bb_w, bb_w) if (w < h) else math.atan2(bb_w, bb_w)
-
-    delta = math.pi - alpha - gamma
-
-    length = h if (w < h) else w
-
-    d = length * math.cos(alpha)
-    a = d * math.sin(alpha) / math.sin(delta)
-
-    y = a * math.cos(gamma)
-    x = y * math.tan(gamma)
-
-    return (
-        bb_w - 2 * x,
-        bb_h - 2 * y
-    )
-
-
-def crop_around_center(image, width, height):
-    """
-    https://stackoverflow.com/a/16770343
-    Given a NumPy / OpenCV 2 image, crops it to the given width and height,
-    around it's centre point
-    """
-
-    image_size = (image.shape[1], image.shape[0])
-    image_center = (int(image_size[0] * 0.5), int(image_size[1] * 0.5))
-
-    if(width > image_size[0]):
-        width = image_size[0]
-
-    if(height > image_size[1]):
-        height = image_size[1]
-
-    x1 = int(image_center[0] - width * 0.5)
-    x2 = int(image_center[0] + width * 0.5)
-    y1 = int(image_center[1] - height * 0.5)
-    y2 = int(image_center[1] + height * 0.5)
-
-    return image[y1:y2, x1:x2]
+    def __random_crop(self, img, size):
+        tw = size[0]
+        th = size[1]
+        h, w = img.shape[:2]
+        if ((w - tw) > 0) and ((h - th) > 0):
+            x1 = random.randint(0, w - tw)
+            y1 = random.randint(0, h - th)
+        else:
+            x1 = 0
+            y1 = 0
+        img_return = self.__img_crop(img, (x1, y1, x1 + tw, y1 + th))
+        return img_return, x1, y1
 
 
 class RotateAndCrop:
@@ -191,11 +94,68 @@ class RotateAndCrop:
         M = cv2.getRotationMatrix2D((w/2, h/2), ang, 1)
         img = cv2.warpAffine(img, M, (w, h))
 
-        w_cropped, h_cropped = largest_rotated_rect(w, h, math.radians(ang))
+        w_cropped, h_cropped = self.__largest_rotated_rect(w, h, math.radians(ang))
         # to fix cases of too small or negative image height when cropping
         h_cropped = max(h_cropped, 10)
-        img = crop_around_center(img, w_cropped, h_cropped)
+        img = self.__crop_around_center(img, w_cropped, h_cropped)
         return img
+
+    def __largest_rotated_rect(self, w, h, angle):
+        """
+        https://stackoverflow.com/a/16770343
+        Given a rectangle of size wxh that has been rotated by 'angle' (in
+        radians), computes the width and height of the largest possible
+        axis-aligned rectangle within the rotated rectangle.
+        Original JS code by 'Andri' and Magnus Hoff from Stack Overflow
+        Converted to Python by Aaron Snoswell
+        """
+
+        quadrant = int(math.floor(angle / (math.pi / 2))) & 3
+        sign_alpha = angle if ((quadrant & 1) == 0) else math.pi - angle
+        alpha = (sign_alpha % math.pi + math.pi) % math.pi
+
+        bb_w = w * math.cos(alpha) + h * math.sin(alpha)
+        bb_h = w * math.sin(alpha) + h * math.cos(alpha)
+
+        gamma = math.atan2(bb_w, bb_w) if (w < h) else math.atan2(bb_w, bb_w)
+
+        delta = math.pi - alpha - gamma
+
+        length = h if (w < h) else w
+
+        d = length * math.cos(alpha)
+        a = d * math.sin(alpha) / math.sin(delta)
+
+        y = a * math.cos(gamma)
+        x = y * math.tan(gamma)
+
+        return (
+            bb_w - 2 * x,
+            bb_h - 2 * y
+        )
+
+    def __crop_around_center(self, image, width, height):
+        """
+        https://stackoverflow.com/a/16770343
+        Given a NumPy / OpenCV 2 image, crops it to the given width and height,
+        around its centre point
+        """
+
+        image_size = (image.shape[1], image.shape[0])
+        image_center = (int(image_size[0] * 0.5), int(image_size[1] * 0.5))
+
+        if (width > image_size[0]):
+            width = image_size[0]
+
+        if (height > image_size[1]):
+            height = image_size[1]
+
+        x1 = int(image_center[0] - width * 0.5)
+        x2 = int(image_center[0] + width * 0.5)
+        y1 = int(image_center[1] - height * 0.5)
+        y2 = int(image_center[1] + height * 0.5)
+
+        return image[y1:y2, x1:x2]
 
 
 class CLAHE:
@@ -370,8 +330,6 @@ class HueSaturationValue:
 
 
 class RandomShadow:
-    def __init__(self):
-        pass
 
     def __call__(self, image, mask=None):
         row, col, ch = image.shape
@@ -448,8 +406,130 @@ class GlassBlur:
         return img
 
 
-def get_train_transforms(height, width, prob):
+class ChangeWidth:
+    def __call__(self, img):
+        proportion = random.uniform(0.5, 2.)
+        new_width = int(img.shape[1] * proportion)
+        img = cv2.resize(img, (new_width, img.shape[0]), interpolation=cv2.INTER_AREA)
+        return img
+
+
+class Erosion:
+
+    def __call__(self, img):
+        img = cv2.erode(img, np.ones(2, np.uint8), iterations=1)
+        return img
+
+
+class Dilation:
+
+    def __call__(self, img):
+        img = cv2.dilate(img, np.ones(2, np.uint8), iterations=1)
+        return img
+
+
+class RandomBlot:
+    def __call__(self, img):
+        blots_num = random.randint(1, 3)
+        b = HandWrittenBlot(
+            {'x': (None, None), 'y': (None, None), 'h': (int(img.shape[0] * 0.1), int(img.shape[0] * 0.5)),
+             'w': (int(img.shape[1] * 0.1), int(img.shape[1] * 0.2))},  # noqa
+            {'incline': (10, 50), 'intensivity': (0.75, 0.75), 'transparency': (0.05, 0.4), 'count': blots_num}
+        )
+        return b.apply(img)
+
+
+class GradientBackground:
+
+    def __call__(self, img):
+        light = random.choice([True, False])
+        rotate = random.randint(0, 3)
+        color = random.randint(100, 200)
+        background_img = np.ones((img.shape[1], img.shape[1], 3), dtype=np.uint8) * 255
+        gradient_mask = np.rot90(np.repeat(np.tile(np.linspace(1, 0, background_img.shape[0]),
+                                                   (background_img.shape[0], 1))[:, :, np.newaxis], 3, axis=2), rotate)
+        background_img[:, :, :] = gradient_mask * background_img + (1 - gradient_mask) * color
+        background_img = 255 - cv2.resize(background_img, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_AREA)
+        background_img = background_img.astype(np.uint8)
+
+        if light:
+            return cv2.add(img, background_img)
+        else:
+            img = cv2.add(255 - img, background_img)
+            return 255 - img
+
+
+class RandomStains:
+
+    def __call__(self, img):
+        light = random.choice([True, False])
+        color = random.randint(100, 200)
+        rng = default_rng(seed=random.randint(0, 1000))
+        noise = rng.integers(0, 255, (img.shape[0], img.shape[1]), np.uint8, True)
+        blur = cv2.GaussianBlur(noise, (0, 0), sigmaX=15, sigmaY=15, borderType=cv2.BORDER_DEFAULT)
+        stretch = skimage.exposure.rescale_intensity(blur, in_range='image', out_range=(0, 255))
+        thresh = cv2.threshold(stretch, 175, 255, cv2.THRESH_BINARY)[1]
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+        mask = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        mask = cv2.merge([mask, mask, mask])
+        result = np.where(mask > 0, 255 - color, 0).astype(np.uint8)
+        result = result.astype(np.uint8)
+
+        if light:
+            return cv2.add(img, result)
+        else:
+            img = cv2.add(255 - img, result)
+            return 255 - img
+
+
+class RandomBlurredStains:
+
+    def __call__(self, img):
+        light = random.choice([True, False])
+        max_color = random.randint(100, 200)
+        rng = default_rng(seed=random.randint(0, 1000))
+        noise = rng.integers(0, 255, (img.shape[0], img.shape[1]), np.uint8, True)
+        blur = cv2.GaussianBlur(noise, (0, 0), sigmaX=15, sigmaY=15, borderType=cv2.BORDER_DEFAULT)
+
+        background_img = cv2.merge([blur, blur, blur]) / 255.
+        background_img = ((background_img - background_img.min()) * max_color / (background_img.max() - background_img.min())).astype(np.uint8)
+        background_img = background_img.astype(np.uint8)
+
+        if light:
+            return cv2.add(img, background_img)
+        else:
+            img = cv2.add(255 - img, background_img)
+            return 255 - img
+
+
+class CutCharacters:
+
+    def __call__(self, img):
+        under = random.choice([True, False])
+        img = 255 - img
+        y = int(0.3 * img.shape[0])
+        cut_img = img[:y, :] if under else img[-y:, :]
+        cut_img = np.roll(cut_img, random.randint(0, cut_img.shape[1]), axis=1)
+
+        if under:
+            img[-y:, :] = cv2.add(img[-y:, :], cut_img)
+        else:
+            img[:y, :] = cv2.add(img[:y, :], cut_img)
+        return 255 - img
+
+
+def get_transforms(prob):
     transforms = [
+        UseWithProb(CutCharacters(), prob),
+        OneOf([
+            RandomBlot(),
+            RandomStains(),
+            RandomBlurredStains(),
+            GradientBackground()
+        ]),
+        UseWithProb(Erosion(), prob),
+        UseWithProb(Dilation(), prob),
         OneOf([
             CLAHE(prob),
             GaussNoise(prob),
@@ -468,7 +548,8 @@ def get_train_transforms(height, width, prob):
             ElasticTransform(prob),
             GridDistortion(prob),
             OpticalDistortion(prob),
-            Perspective(prob)
+            Perspective(prob),
+            ChangeWidth()
         ]),
         OneOf([
             RandomBrightnessContrast(prob),
@@ -477,8 +558,5 @@ def get_train_transforms(height, width, prob):
             RandomSnow(prob),
             UseWithProb(RandomShadow(), prob)
         ]),
-        RescalePaddingImage(height, width),
-        MoveChannels(to_channels_first=True),
-        Normalize(),
     ]
     return transforms

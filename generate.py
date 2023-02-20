@@ -45,27 +45,30 @@ if __name__ == "__main__":
         config["font_name"] = os.path.join(fonts_dir, font_name)
         text_generator.change_config(new_config=config)
 
-        words = set()
-        while len(words) < 5000:
-            words = words | set(get_random_text().split(" "))
-        words = list(words)[:1500]
-        sentences = []
+        sentences = set()
+        while len(sentences) < 60000:
+            sentences_list = []
+            words = get_random_text().split(" ")
 
-        # group words into sentences
-        while len(words) > MAX_LEN:
-            sentence_len = random.randint(1, MAX_LEN)
-            sentences.append(" ".join(words[:sentence_len]))
-            words = words[sentence_len:]
+            # group words into sentences
+            while len(words) > MAX_LEN:
+                sentence_len = random.randint(1, MAX_LEN)
+                sentence = " ".join(words[:sentence_len])
+                words = words[sentence_len:]
+
+                if font_name in font2not_allowed_symbols:
+                    for sym in font2not_allowed_symbols[font_name]:
+                        sentence = sentence.replace(sym, "")
+
+                if not sentence:
+                    continue
+                sentences_list.append(sentence)
+
+            sentences = sentences | set(sentences_list)
+
+        sentences = list(sentences)[:60000]
 
         for i, sentence in enumerate(sentences):
-
-            if font_name in font2not_allowed_symbols:
-                for sym in font2not_allowed_symbols[font_name]:
-                    sentence = sentence.replace(sym, "")
-
-            if not sentence:
-                continue
-
             text_generator.config["font_size"] = random.randint(20, 100)
             sentence_img = text_generator.write_word(sentence)
             if sentence_img is not None:

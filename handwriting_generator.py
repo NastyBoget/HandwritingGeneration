@@ -8,6 +8,8 @@ import numpy as np
 from PIL import Image, ImageFont, ImageDraw
 from tqdm import tqdm
 
+from transforms import get_transforms
+
 default_config = dict(
     font_name='fonts/Example.ttf',
     # Font size in px
@@ -43,6 +45,7 @@ class HandwritingGenerator:
         self.x, self.y = self.config["margin_left"], self.config["margin_top"]
         self.img, self.draw = self.create_page()
         self.pages = []
+        self.transforms = get_transforms(prob=0.5)
 
     def change_config(self, new_config: dict) -> None:
         for key in new_config:
@@ -84,7 +87,8 @@ class HandwritingGenerator:
             self.y += self.config["font_size"] + self.config["line_gap"]
             self.x = self.config["margin_left"]
 
-    def write_word(self, text: str, margin: tuple = (10, 10), randomize_skew: bool = True) -> np.ndarray:
+    def write_word(self, text: str, margin: tuple = (10, 10), randomize: bool = True) -> np.ndarray:
+        self.config["font_size"] = random.randint(30, 100)
         img_size = (self.config["font_size"] * 10, self.config["font_size"] * len(text) * 10, 3)
         img = np.zeros(img_size, dtype=np.uint8)
         img[:, :] = self.config["page_color"]
@@ -97,8 +101,12 @@ class HandwritingGenerator:
         draw.text((x, y), text, self.config["text_color"], font=self.font)
         img = np.array(img.crop((x_min - margin[0], y_min - margin[1], x_max + margin[0], y_max + margin[1])))  # noqa
 
-        if randomize_skew:
-            img = self.skew(img, random.uniform(-1.5, 1.5))
+        if randomize:
+            img = self.skew(img, random.uniform(-1.2, 1.2))
+            img = img.astype(np.uint8)
+            for transform in self.transforms:
+                img = transform(img)
+
         return img
 
     def skew(self, img: np.ndarray, angle: float) -> np.ndarray:
