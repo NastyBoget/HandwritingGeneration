@@ -26,7 +26,8 @@ font2not_allowed_symbols = {
     "Voronov.ttf": "ЬЫЪ"
 }
 
-MAX_LEN = 3
+MAX_SENTENCE_LEN = 3
+MAX_WORD_LEN = 40
 
 
 if __name__ == "__main__":
@@ -48,11 +49,11 @@ if __name__ == "__main__":
         sentences = set()
         while len(sentences) < 60000:
             sentences_list = []
-            words = get_random_text().split(" ")
+            words = [word for word in get_random_text().split(" ") if len(word) < MAX_WORD_LEN]
 
             # group words into sentences
-            while len(words) > MAX_LEN:
-                sentence_len = random.randint(1, MAX_LEN)
+            while len(words) > MAX_SENTENCE_LEN:
+                sentence_len = random.randint(1, MAX_SENTENCE_LEN)
                 sentence = " ".join(words[:sentence_len])
                 words = words[sentence_len:]
 
