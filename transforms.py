@@ -519,30 +519,15 @@ class CutCharacters:
         return 255 - img
 
 
-def get_transforms(prob):
+def get_cyrillic_transforms(prob):
     transforms = [
         UseWithProb(CutCharacters(), prob),
+        UseWithProb(OneOf([RandomBlot(), RandomStains(), RandomBlurredStains(), GradientBackground(), RandomShadow()]), prob),
+        UseWithProb(OneOf([Dilation(), Erosion()]), prob),
+        OneOf([CLAHE(prob), GaussNoise(prob), ISONoise(prob), MultiplicativeNoise(prob), ImageCompression(prob), Sharpen(prob), MotionBlur(prob), MedianBlur(prob)]),
         OneOf([
-            RandomBlot(),
-            RandomStains(),
-            RandomBlurredStains(),
-            GradientBackground()
-        ]),
-        UseWithProb(Erosion(), prob),
-        UseWithProb(Dilation(), prob),
-        OneOf([
-            CLAHE(prob),
-            GaussNoise(prob),
-            ISONoise(prob),
-            MultiplicativeNoise(prob),
-            ImageCompression(prob),
-            Sharpen(prob),
-            MotionBlur(prob),
-            MedianBlur(prob)
-        ]),
-        UseWithProb(RandomCrop(rnd_crop_min=0.80), 1),
-        OneOf([
-            UseWithProb(RotateAndCrop(2), prob),
+            RandomCrop(rnd_crop_min=0.80),
+            RotateAndCrop(2),
             Rotate(2, prob),
             SafeRotate(5, prob),
             ElasticTransform(prob),
@@ -551,12 +536,26 @@ def get_transforms(prob):
             Perspective(prob),
             ChangeWidth()
         ]),
+        OneOf([RandomBrightnessContrast(prob), RandomGamma(prob), HueSaturationValue(prob), RandomSnow(prob)]),
+    ]
+    return transforms
+
+
+def get_hkr_transforms(prob):
+    transforms = [
+        UseWithProb(OneOf([Dilation(), Erosion()]), prob),
+        OneOf([CLAHE(prob), GaussNoise(prob), ISONoise(prob), MultiplicativeNoise(prob), ImageCompression(prob), Sharpen(prob), MotionBlur(prob), MedianBlur(prob)]),
         OneOf([
-            RandomBrightnessContrast(prob),
-            RandomGamma(prob),
-            HueSaturationValue(prob),
-            RandomSnow(prob),
-            UseWithProb(RandomShadow(), prob)
+            RandomCrop(rnd_crop_min=0.80),
+            RotateAndCrop(2),
+            Rotate(2, prob),
+            SafeRotate(5, prob),
+            ElasticTransform(prob),
+            GridDistortion(prob),
+            OpticalDistortion(prob),
+            Perspective(prob),
+            ChangeWidth()
         ]),
+        OneOf([RandomBrightnessContrast(prob), RandomGamma(prob), HueSaturationValue(prob), RandomSnow(prob)]),
     ]
     return transforms

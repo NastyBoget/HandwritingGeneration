@@ -8,23 +8,7 @@ from tqdm import tqdm
 
 from handwriting_generator import HandwritingGenerator, default_config
 from text_generator import get_random_text
-
-font2not_allowed_symbols = {
-    "Abram.ttf": "Ъ",
-    "Benvolio.ttf": "Ъ",
-    "Capuletty.ttf": "Ъ",
-    "Eskal.ttf": "Ъ",
-    "Gregory.ttf": "Ъ",
-    "Gogol.ttf": "\"%()?",
-    "Lorenco.ttf": "Ъ",
-    "Marutya.ttf": "ЬЫЪ",
-    "Merkucio.ttf": "Ъ",
-    "Montekky.ttf": "Ъ",
-    "Pushkin.ttf": "%",
-    "Tesla.otf": "ЙЩЬЫЪЭЮЯйщьыъэюя",
-    "Tibalt.ttf": "Ъ",
-    "Voronov.ttf": "ЬЫЪ"
-}
+from utils import font2not_allowed_symbols
 
 MAX_SENTENCE_LEN = 3
 MAX_WORD_LEN = 40

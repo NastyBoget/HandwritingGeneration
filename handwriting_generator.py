@@ -8,33 +8,12 @@ import numpy as np
 from PIL import Image, ImageFont, ImageDraw
 from tqdm import tqdm
 
-from transforms import get_transforms
-
-default_config = dict(
-    font_name='fonts/Example.ttf',
-    # Font size in px
-    font_size=100,
-    # Page size in px
-    page_size=(2480, 3508),
-    # Page color in RGB
-    page_color=(255, 255, 255),
-    # Text color in RGB
-    text_color=(0, 0, 0),
-    # Space between words
-    word_space=1,
-    # Vertical line gap
-    line_gap=50,
-    # Margins
-    margin_left=100,
-    margin_right=100,
-    margin_top=100,
-    margin_bottom=100
-)
+from utils import default_config
 
 
 class HandwritingGenerator:
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict, transforms=None) -> None:
         self.config = config
         for key in default_config:
             if key not in self.config:
@@ -45,7 +24,7 @@ class HandwritingGenerator:
         self.x, self.y = self.config["margin_left"], self.config["margin_top"]
         self.img, self.draw = self.create_page()
         self.pages = []
-        self.transforms = get_transforms(prob=0.5)
+        self.transforms = transforms
 
     def change_config(self, new_config: dict) -> None:
         for key in new_config:
@@ -102,10 +81,11 @@ class HandwritingGenerator:
         img = np.array(img.crop((x_min - margin[0], y_min - margin[1], x_max + margin[0], y_max + margin[1])))  # noqa
 
         if randomize:
-            img = self.skew(img, random.uniform(-1.2, 1.2))
+            img = self.skew(img, random.uniform(-1, 1))
             img = img.astype(np.uint8)
-            for transform in self.transforms:
-                img = transform(img)
+            if self.transforms is not None:
+                for transform in self.transforms:
+                    img = transform(img)
 
         return img
 
